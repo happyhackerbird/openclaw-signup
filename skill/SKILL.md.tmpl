@@ -1,0 +1,89 @@
+---
+name: event-signup
+description: "Sign the user up for an event. Use whenever they send an event, registration, waitlist or RSVP link - even a bare link with no other text."
+metadata: { "openclaw": { "emoji": "📝" } }
+---
+
+# Signup
+
+Sign the user up for an event in the OpenClaw browser, using only the details in
+the **Profile** section at the bottom of this file. A bare event link with no other
+message means "sign me up for this".
+
+## Rules
+
+- **Only facts from the Profile.** Every value you enter comes from the Profile.
+  Never invent or guess a job title, employer, project, city, phone number or any
+  other fact about the user. If a required field cannot be answered from the
+  Profile, do not guess: hand off (step 6) and name the field.
+- **Copy contact details verbatim**, exactly as the Profile writes them.
+- **Write like a person.** Free-text answers are short and plain. Use hyphens,
+  never em-dashes, in anything you type into a form or send to the user.
+- **Never** create an account, type a password, enter an email or SMS code, or
+  enter payment details. If a ticket costs money, hand off.
+- **Do not opt in** to newsletters, marketing or optional extras. Tick only the
+  boxes the form requires (code of conduct, privacy, terms).
+- **One event at a time.** There is ONE shared browser. If several links arrive
+  together, finish one (registered or handed off) before opening the next. Never
+  fill two forms in the same turn - it wedges the browser (stale refs, timeouts,
+  failed turns).
+
+## Procedure
+
+1. **Check it is a signup page.** A link counts only if it is an event,
+   registration, waitlist, RSVP or application page. A link to anything else
+   (an article, a repo) is not a signup. If unclear, ask one short question
+   before doing anything.
+
+2. **Open it in the managed `openclaw` browser profile** (the default). Wait a
+   few seconds for any page-load bot check to clear before interacting. If the
+   site shows the user as signed out where a sign-in would normally exist (for
+   example Luma), say so and hand off - do not try to sign in.
+
+3. **Fill the form** from the Profile. Per field type:
+   - **Text / textarea:** fill the whole value in one action and check it landed
+     complete (typing long text key by key can drop characters).
+   - **Native `<select>`:** select the exact option label.
+   - **Searchable dropdown** (typing filters the list): type to filter, click the
+     option, check the field shows it.
+   - **Custom dropdown** (fixed option panel): open it, take a snapshot, click the
+     option, click an empty area to close the panel (an open panel hijacks the
+     next click), then check the field shows your value. One dropdown at a time.
+   - **Phone with a country selector:** set the country code first, then the number.
+   - **Required consent boxes:** tick them. For dietary needs pick "None" unless
+     the Profile says otherwise.
+   - **"What are you building / working on?"** paste the Profile's answer for it
+     character for character. Do not shorten, extend or reword it.
+   - **Other free text** (about you, why this event, expectations): one to three
+     sentences built only from the Profile, fitted to this event.
+   - **Optional fields** the Profile does not cover: leave empty.
+
+4. **Submit** - at most 2 attempts, no hammer-retry.
+
+5. **On success** (a confirmation, "pending approval" or "on the waitlist" state):
+   reply with the event title, date, and which state it is in. Done.
+
+6. **On any blocker, hand off.** A blocker is a captcha or "verify you are human"
+   step (Cloudflare Turnstile, reCAPTCHA, hCaptcha), a sign-in wall, an email or
+   SMS code, a payment step, or a required field the Profile cannot answer. Do not
+   close the tab. Reply in this shape:
+
+   ```
+   Couldn't finish: <event title>
+   <event url>
+   Blocked by: <what stopped you>
+   Filled in so far:
+   - <field>: <value>
+   - ...
+   Left for you: <each remaining field>, then submit.
+   The filled form is still open in the OpenClaw browser, if you can see it.
+   Otherwise open the link and paste the values above.
+   ```
+
+7. **Ambiguous outcome** (you cannot positively see a success state): treat it as
+   a blocker (step 6) and say you could not confirm it. Never report "registered"
+   without seeing it on the page.
+
+## Profile
+
+{{PROFILE}}

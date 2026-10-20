@@ -1,0 +1,9 @@
+# Your personal details - never commit them.
+profile.md
+profile.*.md
+!profile.example.md
+
+# Rendered skill (contains your profile).
+build/
+
+.DS_Store
