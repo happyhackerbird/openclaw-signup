@@ -6,6 +6,7 @@
 #   ./install.sh --render-only       only build build/event-signup/SKILL.md (no OpenClaw needed)
 #   ./install.sh --profile <file>    use another profile file (default: ./profile.md)
 #   ./install.sh --no-routing        do not touch the agent's AGENTS.md (see README)
+#   ./install.sh --queue-dir <dir>   where blocked events wait for /signup (default ~/.openclaw-signup)
 #
 # The profile is inlined into SKILL.md at build time, so the agent never reads a
 # profile file at runtime and needs no file tools - only the browser. Re-run this
@@ -23,6 +24,8 @@ BUILD="$HERE/build/$SLUG"
 AGENT=""
 RENDER_ONLY=0
 ROUTING=1
+# Kept as "~/..." so it expands to the home of whoever runs the gateway.
+QUEUE_DIR="~/.openclaw-signup"
 
 die() { echo "install: $*" >&2; exit 1; }
 warn() { echo "install: warning - $*" >&2; }
@@ -37,7 +40,11 @@ while [ $# -gt 0 ]; do
       AGENT="$2"; shift 2 ;;
     --render-only) RENDER_ONLY=1; shift ;;
     --no-routing) ROUTING=0; shift ;;
-    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --queue-dir)
+      [ $# -ge 2 ] || die "--queue-dir needs a directory"
+      case "$2" in "~"|"~/"*|/*) QUEUE_DIR="$2" ;; *) QUEUE_DIR="$PWD/$2" ;; esac
+      shift 2 ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
@@ -99,6 +106,18 @@ rc=$?
 [ $rc -eq 3 ] && die "template has no {{PROFILE}} line: $TEMPLATE"
 [ $rc -eq 0 ] || die "rendering failed (awk exit $rc)"
 grep -q '{{PROFILE}}' "$BUILD/SKILL.md" && die "render left a {{PROFILE}} marker in $BUILD/SKILL.md"
+
+# The handoff to /signup: handoff.sh queues through signupq, which finds the
+# queue via the queue-dir file. The skill runs them with `bash`, so a lost
+# executable bit cannot break them.
+mkdir -p "$BUILD/scripts" \
+  && cp "$HERE/skill/scripts/handoff.sh" "$HERE/queue/signupq" "$HERE/queue/queue.py" "$BUILD/scripts/" \
+  && printf '%s\n' "$QUEUE_DIR" > "$BUILD/scripts/queue-dir" \
+  || die "could not copy the handoff scripts into $BUILD"
+# python3 is deliberately not a skill gate: without it only the /signup queue
+# fails, and the skill still signs up and hands off in chat.
+command -v python3 >/dev/null 2>&1 \
+  || warn "python3 not found - blocked events will be reported in chat but not queued for /signup."
 
 echo "built $BUILD/SKILL.md"
 [ $RENDER_ONLY -eq 1 ] && exit 0
@@ -192,6 +211,8 @@ $END_MARK"
 if [ $ROUTING -eq 1 ]; then
   route || warn "the skill is installed, but bare event links may not reach it (see README, 'Routing')."
 fi
+
+echo "  blocked events queue in: $QUEUE_DIR (finish them with /signup - ./install-claude-code.sh)"
 
 cat <<'EOF'
 

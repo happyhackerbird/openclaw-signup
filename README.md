@@ -7,7 +7,9 @@ submits it.
 
 When it hits something only you can do (a captcha, an email code, a payment, a question
 your profile doesn't answer), it stops and sends you the link, everything it filled in,
-and what's left. It never guesses facts about you and never pays for anything.
+and what's left. It also queues the event for `/signup`, a Claude Code skill that opens
+it in your own Chrome, fills it in again and leaves only the human part to you. Nothing
+here guesses facts about you or pays for anything.
 
 Works with any working OpenClaw on macOS or Linux.
 
@@ -25,7 +27,14 @@ you: https://lu.ma/some-event
           +-- success  ->  "Registered: <event>, <date>, <confirmed / waitlist / pending>"
           |
           +-- blocked  ->  "Couldn't finish: <event> / <link> / Blocked by: <captcha...>
-                            Filled in so far: ... / Left for you: ..."
+                |           Filled in so far: ... / Left for you: ...
+                |           Queued for /signup: <id>"
+                v
+       queue (a folder, or a private git repo if OpenClaw runs on a server)
+                |
+                v
+ you, in Claude Code: /signup  ->  opens each queued event in your Chrome, fills it in,
+                                   stops before submit; you do the captcha and submit
 ```
 
 Your details live in `profile.md`, which never leaves your machine: `install.sh` copies
@@ -34,8 +43,9 @@ access.
 
 ## Setup
 
-You need a working OpenClaw (gateway running, an agent you can chat with) and Chrome,
-Chromium, Brave or Edge on the machine OpenClaw runs on.
+You need a working OpenClaw (gateway running, an agent you can chat with), Chrome,
+Chromium, Brave or Edge on the machine OpenClaw runs on, and `python3` for the queue.
+`/signup` (step 6) also needs Claude Code on the computer you sit at.
 
 ### 1. Get the repo
 
@@ -112,7 +122,55 @@ Do the same for any other site where you want one-click registration.
 
 **On a Linux server:** see [Running on a Linux server](#running-on-a-linux-server).
 
-### 6. Try it
+### 6. Set up `/signup`
+
+`/signup` finishes the events the agent got stuck on. It runs in Claude Code and opens
+each queued event in your own Chrome, where you are signed in. It fills in everything
+the agent knew and stops before submitting, so you only solve the captcha (or fill the
+missing field) and click submit.
+
+On the computer you sit at, you need [Claude Code](https://claude.com/claude-code) with
+the [Claude in Chrome](https://claude.ai/chrome) extension, and `python3`.
+
+**If OpenClaw runs on this same computer:**
+
+```sh
+./install-claude-code.sh
+```
+
+Both sides use the folder `~/.openclaw-signup` as the queue. Nothing else to set up.
+
+**If OpenClaw runs on another machine (a server),** the queue travels through a private
+git repo:
+
+1. Create a private repo that already has a first commit:
+   `gh repo create signup-queue --private --add-readme`
+2. On the server, as the user that runs OpenClaw, clone it with push access (an SSH
+   deploy key with write access works well), and point the skill at it:
+
+   ```sh
+   git clone git@github.com:<you>/signup-queue.git ~/signup-queue
+   ./install.sh --queue-dir ~/signup-queue
+   ```
+
+3. On your computer:
+
+   ```sh
+   git clone git@github.com:<you>/signup-queue.git ~/signup-queue
+   ./install-claude-code.sh --queue-dir ~/signup-queue
+   ```
+
+The queue holds the values the agent filled in from your profile, so keep that repo
+private.
+
+**Using it:** when the agent writes `Queued for /signup: <id>`, start Claude Code with
+Chrome connected (`claude --chrome`, or `/chrome` in a running session) and type
+`/signup`. It works through every queued event, one tab each.
+
+If you already have a `/signup` command or skill, the installer leaves it alone and
+stops. Install under another name with `./install-claude-code.sh --name <name>`.
+
+### 7. Try it
 
 In your chat with the agent, send `/new` (so it starts a session with the new skill),
 then send an event link on its own.
@@ -120,9 +178,23 @@ then send an event link on its own.
 ## Updating
 
 - **Changed your profile?** Run `./install.sh` again.
-- **New version of this repo?** `git pull`, then `./install.sh`.
+- **New version of this repo?** `git pull`, then `./install.sh` and
+  `./install-claude-code.sh` (with the same options as the first time).
 
-Both are safe to repeat: the skill is replaced and the routing block is updated in place.
+All of these are safe to repeat: the skills are replaced and the routing block is
+updated in place.
+
+## The queue
+
+Blocked events go into `signups.jsonl` in the queue folder. Each line is one event,
+"queued" or "closed", and lines are only ever added, never changed. That is what lets
+the server and your computer both write to the queue between syncs: git's union merge
+keeps both sides' new lines, so a sync never conflicts.
+
+`/signup` closes an event once it has filled the form in and handed the tab to you. If
+you don't finish one, send the link to your agent again and it goes back in the queue.
+
+To see what's waiting: `bash ~/.claude/skills/signup/signupq list`.
 
 ## Routing
 
@@ -225,24 +297,35 @@ creates (`openclaw-gateway.service`); run them as the user that runs OpenClaw.
 | Every event comes back "blocked by captcha" | On a server: headless Chrome is being caught - set up Xvfb. On a desktop: the site wants a human; finish it from the message. |
 | Luma events come back "signed out" or "email code" | Log the OpenClaw browser in again (step 5). |
 | Sending several links at once goes wrong | There is one shared browser. The skill does them one by one, but sending one link per message is the safest. |
+| The agent writes `Not queued: ...` | It could not run the handoff script. Usually OpenClaw's exec policy (`openclaw approvals get`) or no `python3` on the OpenClaw machine. The chat message still has everything you need. |
+| `/signup` says "No pending signups" but the agent queued one | Server setup: on the server run `git -C ~/signup-queue push` and read the error. Most often the server's clone has no push access. |
+| `/signup` says Chrome isn't connected | Start Claude Code with `claude --chrome`. The extension must be signed in to the same Claude account as Claude Code. |
 
-`./install.sh` itself refuses to run with an unedited template, a profile without a name
-or email, or when OpenClaw doesn't show the skill as visible to the model, and says why.
+The installers refuse to run with an unedited profile template, a profile without a
+name or email, when OpenClaw doesn't show the skill as visible to the model, or when
+they would overwrite a `/signup` they didn't create, and they say why.
 
 ## Uninstall
 
 ```sh
 openclaw skills info event-signup     # shows the Path of the installed skill
 rm -rf ~/.openclaw/skills/event-signup
+rm -rf ~/.claude/skills/signup        # /signup
 ```
 
-Then delete the `event-signup` block from your agent's `AGENTS.md`.
+Then delete the `event-signup` block from your agent's `AGENTS.md`. The queue folder
+(`~/.openclaw-signup`, or your queue repo) is yours to keep or delete.
 
 ## Files
 
 | File | What it is |
 |---|---|
 | `profile.example.md` | Template for your details. Copy to `profile.md`. |
-| `skill/SKILL.md.tmpl` | The skill. `{{PROFILE}}` is replaced by your profile. |
-| `install.sh` | Builds the skill, installs it, adds routing. bash + awk; uses `node` (which OpenClaw needs anyway) to read OpenClaw's JSON. |
-| `tests/test_install.sh` | Tests for `install.sh` against a fake `openclaw`. Run `bash tests/test_install.sh`. |
+| `skill/SKILL.md.tmpl` | The OpenClaw skill. `{{PROFILE}}` is replaced by your profile. |
+| `skill/scripts/handoff.sh` | Queues a blocked event and prints the receipt the agent pastes. |
+| `claude/signup/SKILL.md.tmpl` | The Claude Code `/signup` skill. |
+| `queue/queue.py` | Reads and appends the queue log. |
+| `queue/signupq` | The queue command both skills use; syncs it when the queue folder is a git clone. |
+| `install.sh` | Builds and installs the OpenClaw skill, adds routing. bash + awk; uses `node` (which OpenClaw needs anyway) to read OpenClaw's JSON. |
+| `install-claude-code.sh` | Installs `/signup` into Claude Code. |
+| `tests/` | `bash tests/run.sh` runs every suite (needs python3, git, node, perl). |

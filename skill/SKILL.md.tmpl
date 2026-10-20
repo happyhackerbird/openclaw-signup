@@ -66,19 +66,37 @@ message means "sign me up for this".
 6. **On any blocker, hand off.** A blocker is a captcha or "verify you are human"
    step (Cloudflare Turnstile, reCAPTCHA, hCaptcha), a sign-in wall, an email or
    SMS code, a payment step, or a required field the Profile cannot answer. Do not
-   close the tab. Reply in this shape:
+   close the tab.
 
-   ```
-   Couldn't finish: <event title>
-   <event url>
-   Blocked by: <what stopped you>
-   Filled in so far:
-   - <field>: <value>
-   - ...
-   Left for you: <each remaining field>, then submit.
-   The filled form is still open in the OpenClaw browser, if you can see it.
-   Otherwise open the link and paste the values above.
-   ```
+   a. **Queue it for `/signup`**, which pre-fills it again in the user's own
+      Chrome through Claude Code:
+
+      ```bash
+      bash {baseDir}/scripts/handoff.sh \
+        --url "<event url>" --title "<event title>" \
+        --ticket "<ticket or button label - leave this flag out if none>" \
+        --prefill '<JSON object: form field label -> the value you filled>' \
+        --needs-user "<what is left for the user, comma-separated>"
+      ```
+
+      It prints a receipt with an `id:` line. Never say "queued" without that
+      id, and never write the queue file yourself. If the command fails or you
+      are not allowed to run it, carry on with the reply and say why.
+
+   b. **Reply** in this shape:
+
+      ```
+      Couldn't finish: <event title>
+      <event url>
+      Blocked by: <what stopped you>
+      Filled in so far:
+      - <field>: <value>
+      - ...
+      Left for you: <each remaining field>, then submit.
+      Queued for /signup: <id from the receipt>
+      ```
+
+      If it was not queued, write `Not queued: <why>` in place of the last line.
 
 7. **Ambiguous outcome** (you cannot positively see a success state): treat it as
    a blocker (step 6) and say you could not confirm it. Never report "registered"

@@ -16,7 +16,7 @@ ok() { echo "ok: $1"; }
 new_sandbox() {
   T="$(mktemp -d)"
   mkdir -p "$T/repo" "$T/bin" "$T/ws-main" "$T/ws-work"
-  cp -R "$ROOT/install.sh" "$ROOT/skill" "$ROOT/profile.example.md" "$T/repo/"
+  cp -R "$ROOT/install.sh" "$ROOT/skill" "$ROOT/queue" "$ROOT/profile.example.md" "$T/repo/"
   grep -v '<!-- TEMPLATE:' "$ROOT/profile.example.md" > "$T/repo/profile.md"
   printf '%s\n' "# AGENTS.md" "" "Be helpful." > "$T/ws-main/AGENTS.md"
   printf '%s\n' "# AGENTS.md (work)" > "$T/ws-work/AGENTS.md"
@@ -180,5 +180,19 @@ out="$(run)" || fail "broken marker made the install fail: $out"
 cmp -s "$WS_MAIN/AGENTS.md" "$T/before" || fail "AGENTS.md with a broken marker was rewritten"
 echo "$out" | grep -q 'no end marker' || fail "no broken-marker warning: $out"
 ok "broken marker left alone"
+
+# 15. the build carries the handoff scripts; queue-dir defaults to ~/.openclaw-signup,
+#     --queue-dir is kept as given (~ or absolute) and relative paths become absolute
+new_sandbox
+run --render-only >/dev/null || fail "render failed"
+B="$T/repo/build/event-signup/scripts"
+for f in handoff.sh signupq queue.py; do [ -f "$B/$f" ] || fail "build lacks scripts/$f"; done
+[ "$(cat "$B/queue-dir")" = "~/.openclaw-signup" ] || fail "default queue-dir: $(cat "$B/queue-dir")"
+skill | grep -q 'bash {baseDir}/scripts/handoff.sh' || fail "skill does not call handoff.sh via bash"
+run --render-only --queue-dir /srv/q >/dev/null; [ "$(cat "$B/queue-dir")" = "/srv/q" ] || fail "absolute queue-dir"
+run --render-only --queue-dir "~/q" >/dev/null; [ "$(cat "$B/queue-dir")" = "~/q" ] || fail "~ queue-dir"
+( cd "$T" && PATH="$T/bin:/usr/bin:/bin" bash "$T/repo/install.sh" --render-only --queue-dir rel/q >/dev/null 2>&1 )
+[ "$(cat "$B/queue-dir")" = "$(cd "$T" && pwd)/rel/q" ] || fail "relative queue-dir not made absolute: $(cat "$B/queue-dir")"
+ok "build carries handoff scripts + queue-dir"
 
 if [ $FAILS -eq 0 ]; then echo "ALL TESTS PASSED"; else echo "$FAILS FAILURE(S)"; exit 1; fi

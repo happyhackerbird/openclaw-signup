@@ -1,0 +1,93 @@
+---
+name: {{NAME}}
+description: Finish event signups your OpenClaw agent could not complete (captcha, sign-in, missing field). Opens each in your Chrome, pre-fills it, and leaves the final steps and submit to you. Never submits.
+disable-model-invocation: true
+allowed-tools: Bash, Read, mcp__claude-in-chrome__*
+---
+
+# /{{NAME}} - finish the event signups your agent handed off
+
+When your OpenClaw agent hits something only you can do on an event form (a
+captcha, a sign-in, a question your profile doesn't answer), it queues the event.
+This opens each queued event in YOUR Chrome through Claude in Chrome, fills in
+everything the agent already knew, and stops for the human-only steps. It
+**never submits**.
+
+A record can be any registration page - Luma, a hackathon portal, a waitlist, a
+survey. Adapt to the page: steps 3b-3d only apply when the page has that thing.
+
+**Hyphens only, never em-dashes, in anything you type into a form.**
+
+## Steps
+
+1. **Read the queue.** It syncs first when the queue is shared through git.
+
+   ```sh
+   bash "{{SIGNUPQ}}" list
+   ```
+
+   If it prints `[]`, say "No pending signups." and stop.
+
+2. **Check Chrome is connected:** call `mcp__claude-in-chrome__tabs_context_mcp`.
+   If the Claude in Chrome tools are not available, say "Chrome isn't connected -
+   start Claude Code with `claude --chrome` (or run `/chrome`), then run
+   /{{NAME}} again." and stop. Do not guess.
+
+3. **One record at a time**, oldest first. For each:
+
+   a. Open a NEW tab, go to its `url`, and wait for the page to load.
+
+   b. **Sign in - only if the page needs it.** If a sign-in wall stands where the
+      form should be, ask the user to sign in in that tab, then stop and wait for
+      them. Never type a password. Plain forms (waitlists, surveys) need no
+      sign-in: skip this.
+
+   c. **Already registered?** If the page shows a registered state ("You're in",
+      "Going", "Registered", "On the waitlist", "Pending approval", "Thanks for
+      registering"), close the record (step 4, note "already registered") and go
+      to the next one. Never register twice.
+
+   d. **Reveal the form** if it sits behind a Register / RSVP / Request to join /
+      Get ticket / Apply button: click it, and pick the record's `ticket` if the
+      page offers a choice. If the fields are already on the page, go straight to
+      filling.
+
+   e. **Fill every `prefill` field**, matching each key to its form field, and
+      check each one before moving on:
+      - **Text / textarea:** use `form_input` with the field's `ref` (one atomic
+        action). Do not use the `type` action for long text - it drops characters.
+      - **Native `<select>`:** select the exact option label (e.g. Country ->
+        "Germany").
+      - **Searchable dropdown** (typing filters the list): type the value to
+        filter, click the option, check it.
+      - **Custom dropdown** (a fixed option panel, typing does not filter):
+        (1) click the field to open it; (2) take a screenshot; (3) click the option
+        from THAT screenshot; (4) click an empty area to close the panel - it
+        lingers and hijacks your next click otherwise; (5) screenshot and confirm
+        the field shows your value. One dropdown at a time.
+      - **Phone with a country selector:** set the country code if it is not
+        already right, then the number.
+      - **Required checkboxes:** tick what the form requires to submit (code of
+        conduct, privacy, terms, "None" for dietary). Do not opt in to marketing
+        or extras unless a `prefill` value says so.
+      - If you cannot confidently match a value to a field, leave it and add it to
+        the list for the user. Never guess personal facts.
+
+   f. **Stop before submitting.** In one short message tell the user what is
+      left: each `needs_user` item, anything you could not fill, then the human
+      check (captcha) if any and the submit button. Leave the tab open on the form.
+
+   g. **Close the record** (step 4) with the note "prefilled, left for the user
+      to submit", then move on. If the user never finishes it, sending the link
+      to their agent again puts it back in the queue.
+
+4. **Closing a record:**
+
+   ```sh
+   bash "{{SIGNUPQ}}" done --id <id> --notes "<short note>"
+   ```
+
+   Use `--status skipped` instead if the user says they don't want the event.
+
+5. **At the end**, list each event in one line: its title, then what is left
+   for the user in its tab.

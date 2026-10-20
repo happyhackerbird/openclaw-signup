@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# signupq - the event-signup queue, shared by the OpenClaw skill (which adds
+# events it could not finish) and Claude Code's /signup (which finishes them).
+# Wraps queue.py; when the queue directory is a git clone, keeps it in sync.
+#
+#   signupq where                    print the queue file path
+#   signupq list                     pull, then print pending records as JSON
+#   signupq enqueue <args>           queue.py enqueue <args>, then push
+#   signupq done --id <id> [...]     queue.py mark-done --id <id> [...], then push
+#   signupq check                    pull, then print the pending count
+#
+# Queue directory: $SIGNUP_QUEUE_DIR, else the path in `queue-dir` next to this
+# script (the installers write it), else ~/.openclaw-signup.
+#   local mode: a plain folder - OpenClaw and Claude Code on the same computer
+#   git mode:   the folder is a clone of a private repo, on both computers
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+QUEUE_PY="$HERE/queue.py"
+DIR="${SIGNUP_QUEUE_DIR:-}"
+if [ -z "$DIR" ] && [ -f "$HERE/queue-dir" ]; then DIR="$(head -1 "$HERE/queue-dir")"; fi
+[ -n "$DIR" ] || DIR="$HOME/.openclaw-signup"
+case "$DIR" in "~") DIR="$HOME" ;; "~/"*) DIR="$HOME/${DIR#\~/}" ;; esac
+LOG="signups.jsonl"
+export SIGNUP_QUEUE="$DIR/$LOG"
+SYNC="local"
+
+command -v python3 >/dev/null 2>&1 || { echo "signupq: python3 is not installed" >&2; exit 2; }
+
+# Git mode only when the queue dir is itself the top of a clone with a remote -
+# never when it merely sits inside some other repository.
+is_git() {
+  [ -d "$DIR" ] || return 1
+  local top
+  top="$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  [ "$(cd "$top" && pwd -P)" = "$(cd "$DIR" && pwd -P)" ] || return 1
+  [ -n "$(git -C "$DIR" remote 2>/dev/null)" ]
+}
+
+# Commits AND rebases need an author. A server account often has none, and git
+# then refuses ("unable to auto-detect email address"), which would stall every
+# sync - so fall back to a fixed identity when the clone has none configured.
+g() {
+  if [ -n "$(git -C "$DIR" config user.email 2>/dev/null)" ]; then
+    git -C "$DIR" "$@"
+  else
+    git -C "$DIR" -c user.name=event-signup -c user.email=event-signup@localhost "$@"
+  fi
+}
+
+# The log is append-only, so a union merge (keep both sides' new lines) is always
+# right and never conflicts. Set per clone, so nothing has to be committed.
+union_merge() {
+  local attrs
+  attrs="$(g rev-parse --git-path info/attributes)" || return 0
+  case "$attrs" in /*) ;; *) attrs="$DIR/$attrs" ;; esac
+  grep -qxF "$LOG merge=union" "$attrs" 2>/dev/null && return 0
+  mkdir -p "$(dirname "$attrs")" && echo "$LOG merge=union" >> "$attrs"
+}
+
+pull() {
+  is_git || return 0
+  union_merge
+  if ! g pull -q --rebase --autostash >/dev/null 2>&1; then
+    g rebase --abort >/dev/null 2>&1 || true
+    echo "signupq: could not pull the queue - using the local copy" >&2
+    return 1
+  fi
+}
+
+# Commit the queue file (if changed), rebase onto the remote, push. Sets SYNC.
+push() {
+  is_git || { SYNC="local"; return 0; }
+  union_merge
+  g add "$LOG" 2>/dev/null
+  g diff --cached --quiet || g commit -q -m "$1" >/dev/null 2>&1
+  if ! g pull -q --rebase --autostash >/dev/null 2>&1; then
+    g rebase --abort >/dev/null 2>&1 || true
+  fi
+  if g push -q >/dev/null 2>&1; then
+    SYNC="pushed"
+  else
+    SYNC="push failed - saved locally, goes out with the next change"
+  fi
+}
+
+cmd="${1:-}"; [ $# -gt 0 ] && shift
+case "$cmd" in
+  where) echo "$SIGNUP_QUEUE" ;;
+  list)
+    pull
+    python3 "$QUEUE_PY" list-pending --json ;;
+  check)
+    pull
+    python3 "$QUEUE_PY" check ;;
+  enqueue)
+    mkdir -p "$DIR" || exit 1
+    pull
+    out="$(python3 "$QUEUE_PY" enqueue "$@" 2>&1)"; rc=$?
+    echo "$out"
+    [ $rc -eq 0 ] || exit $rc
+    push "signup: queue $(printf '%s\n' "$out" | sed -nE 's/^[A-Z]+: ([^ ]+).*/\1/p' | head -1)"
+    echo "SYNC: $SYNC" ;;
+  done)
+    pull
+    python3 "$QUEUE_PY" mark-done "$@" || exit $?
+    push "signup: close $*"
+    echo "SYNC: $SYNC" ;;
+  *)
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2 ;;
+esac
