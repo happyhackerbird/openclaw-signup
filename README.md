@@ -7,9 +7,9 @@ submits it.
 
 When it hits something only you can do (a captcha, an email code, a payment, a question
 your profile doesn't answer), it stops and sends you the link, everything it filled in,
-and what's left. It also queues the event for `/signup`, a Claude Code skill that opens
-it in your own Chrome, fills it in again and leaves only the human part to you. Nothing
-here guesses facts about you or pays for anything.
+and what's left. It also queues the event for `/signup`, a skill for Claude Code (or
+`$signup` for Codex) that opens it in your own Chrome, fills it in again and leaves only
+the human part to you. Nothing here guesses facts about you or pays for anything.
 
 Works with any working OpenClaw on macOS or Linux.
 
@@ -34,7 +34,7 @@ you: https://lu.ma/some-event
                 |
                 v
  you, in Claude Code: /signup  ->  opens each queued event in your Chrome, fills it in,
-                                   stops before submit; you do the captcha and submit
+  (or in Codex: $signup)           stops before submit; you do the captcha and submit
 ```
 
 Your details live in `profile.md`, which never leaves your machine: `install.sh` copies
@@ -45,7 +45,7 @@ access.
 
 You need a working OpenClaw (gateway running, an agent you can chat with), Chrome,
 Chromium, Brave or Edge on the machine OpenClaw runs on, and `python3` for the queue.
-`/signup` (step 6) also needs Claude Code on the computer you sit at.
+`/signup` (step 6) also needs Claude Code or Codex on the computer you sit at.
 
 ### 1. Get the repo
 
@@ -170,6 +170,20 @@ Chrome connected (`claude --chrome`, or `/chrome` in a running session) and type
 If you already have a `/signup` command or skill, the installer leaves it alone and
 stops. Install under another name with `./install-claude-code.sh --name <name>`.
 
+**With Codex instead of Claude Code:** you need [Codex](https://github.com/openai/codex)
+with browser use, the ChatGPT Chrome extension installed and signed in, and `python3`.
+Install with the same options as above (`--queue-dir`, `--name`, `--force`):
+
+```sh
+./install-codex.sh                               # same computer as OpenClaw
+./install-codex.sh --queue-dir ~/signup-queue    # OpenClaw on a server
+```
+
+Then start Codex and type `$signup`. It drives your own Chrome through the extension, so
+your logins are there. Codex asks you to allow each new site the first time, and may ask
+to run the queue command outside its sandbox (it writes to the queue folder and, with a
+git queue, pushes it). Approve both.
+
 ### 7. Try it
 
 In your chat with the agent, send `/new` (so it starts a session with the new skill),
@@ -179,7 +193,8 @@ then send an event link on its own.
 
 - **Changed your profile?** Run `./install.sh` again.
 - **New version of this repo?** `git pull`, then `./install.sh` and
-  `./install-claude-code.sh` (with the same options as the first time).
+  `./install-claude-code.sh` or `./install-codex.sh` (with the same options as the first
+  time).
 
 All of these are safe to repeat: the skills are replaced and the routing block is
 updated in place.
@@ -194,7 +209,8 @@ keeps both sides' new lines, so a sync never conflicts.
 `/signup` closes an event once it has filled the form in and handed the tab to you. If
 you don't finish one, send the link to your agent again and it goes back in the queue.
 
-To see what's waiting: `bash ~/.claude/skills/signup/signupq list`.
+To see what's waiting: `bash ~/.claude/skills/signup/signupq list` (Codex:
+`bash ~/.codex/skills/signup/signupq list`).
 
 ## Routing
 
@@ -300,6 +316,8 @@ creates (`openclaw-gateway.service`); run them as the user that runs OpenClaw.
 | The agent writes `Not queued: ...` | It could not run the handoff script. Usually OpenClaw's exec policy (`openclaw approvals get`) or no `python3` on the OpenClaw machine. The chat message still has everything you need. |
 | `/signup` says "No pending signups" but the agent queued one | Server setup: on the server run `git -C ~/signup-queue push` and read the error. Most often the server's clone has no push access. |
 | `/signup` says Chrome isn't connected | Start Claude Code with `claude --chrome`. The extension must be signed in to the same Claude account as Claude Code. |
+| `$signup` (Codex) says Chrome isn't connected | Open Chrome and check the ChatGPT extension is installed and signed in, then run `$signup` again. |
+| `$signup` stops because a site or the queue command was declined, though Codex never asked | Codex is running with approvals off (`approval_policy = "never"`), which declines these on its own. Start it with `codex -a on-request` and approve when asked. |
 
 The installers refuse to run with an unedited profile template, a profile without a
 name or email, when OpenClaw doesn't show the skill as visible to the model, or when
@@ -311,6 +329,7 @@ they would overwrite a `/signup` they didn't create, and they say why.
 openclaw skills info event-signup     # shows the Path of the installed skill
 rm -rf ~/.openclaw/skills/event-signup
 rm -rf ~/.claude/skills/signup        # /signup
+rm -rf ~/.codex/skills/signup         # $signup (Codex)
 ```
 
 Then delete the `event-signup` block from your agent's `AGENTS.md`. The queue folder
@@ -324,8 +343,10 @@ Then delete the `event-signup` block from your agent's `AGENTS.md`. The queue fo
 | `skill/SKILL.md.tmpl` | The OpenClaw skill. `{{PROFILE}}` is replaced by your profile. |
 | `skill/scripts/handoff.sh` | Queues a blocked event and prints the receipt the agent pastes. |
 | `claude/signup/SKILL.md.tmpl` | The Claude Code `/signup` skill. |
+| `codex/signup/SKILL.md.tmpl` | The Codex `$signup` skill (browser use on your Chrome). |
 | `queue/queue.py` | Reads and appends the queue log. |
 | `queue/signupq` | The queue command both skills use; syncs it when the queue folder is a git clone. |
 | `install.sh` | Builds and installs the OpenClaw skill, adds routing. bash + awk; uses `node` (which OpenClaw needs anyway) to read OpenClaw's JSON. |
 | `install-claude-code.sh` | Installs `/signup` into Claude Code. |
+| `install-codex.sh` | Installs `$signup` into Codex. |
 | `tests/` | `bash tests/run.sh` runs every suite (needs python3, git, node, perl). |

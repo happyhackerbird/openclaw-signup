@@ -4,10 +4,10 @@ set -uo pipefail
 cd "$(dirname "$0")"
 rc=0
 # The README runs these directly (./install.sh), so they must stay executable.
-for f in ../install.sh ../install-claude-code.sh ../queue/signupq ../skill/scripts/handoff.sh; do
+for f in ../install.sh ../install-claude-code.sh ../install-codex.sh ../queue/signupq ../skill/scripts/handoff.sh; do
   [ -x "$f" ] || { echo "FAIL: $f is not executable (chmod +x it)"; rc=1; }
 done
-for t in "python3 test_queue.py" "bash test_handoff.sh" "bash test_install.sh" "bash test_install_claude_code.sh"; do
+for t in "python3 test_queue.py" "bash test_handoff.sh" "bash test_install.sh" "bash test_install_claude_code.sh" "bash test_install_codex.sh"; do
   echo "### $t"
   $t || rc=1
 done
